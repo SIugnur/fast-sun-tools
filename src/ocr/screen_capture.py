@@ -1,37 +1,51 @@
-"""屏幕截图工具 - OCR功能已禁用
-
-由于 PyTorch 在 Windows 上的兼容性问题，OCR 功能暂时禁用。
-如需使用 OCR，请考虑使用 Tesseract OCR。
-"""
+"""屏幕截图工具 - 支持 PaddleOCR 文字识别"""
 
 import mss
 from PIL import Image
 from PyQt5.QtWidgets import (QWidget, QDialog, QVBoxLayout, 
-                            QTextEdit, QPushButton, QHBoxLayout)
+                            QTextEdit, QPushButton, QHBoxLayout, QLabel)
 from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal
 from PyQt5.QtGui import QPainter, QColor, QPen, QPixmap, QImage
+
+from paddleocr import PaddleOCR
 
 
 class OCRResultDialog(QDialog):
     """截图结果对话框"""
     
-    def __init__(self, recognized_text, parent=None):
+    def __init__(self, recognized_text, image_path=None, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("截图")
-        self.setMinimumSize(400, 200)
-        self.init_ui(recognized_text)
+        self.setWindowTitle("截图识别结果")
+        self.setMinimumSize(500, 400)
+        self.init_ui(recognized_text, image_path)
     
-    def init_ui(self, text):
+    def init_ui(self, text, image_path=None):
         layout = QVBoxLayout()
+        
+        # 状态标签
+        if text and text.strip():
+            status_label = QLabel("文字识别完成")
+            status_label.setStyleSheet("color: green; font-weight: bold;")
+            layout.addWidget(status_label)
+        else:
+            status_label = QLabel("未识别到文字")
+            status_label.setStyleSheet("color: orange; font-weight: bold;")
+            layout.addWidget(status_label)
         
         # 文本编辑框
         self.text_edit = QTextEdit()
-        self.text_edit.setText(text)
-        self.text_edit.setReadOnly(True)
+        self.text_edit.setText(text if text else "")
         layout.addWidget(self.text_edit)
         
-        # 关闭按钮
+        # 按钮布局
         btn_layout = QHBoxLayout()
+        
+        # 复制按钮
+        self.copy_btn = QPushButton("复制文字")
+        self.copy_btn.clicked.connect(self.copy_text)
+        btn_layout.addWidget(self.copy_btn)
+        
+        # 关闭按钮
         self.close_btn = QPushButton("关闭")
         self.close_btn.clicked.connect(self.accept)
         btn_layout.addWidget(self.close_btn)
@@ -39,6 +53,11 @@ class OCRResultDialog(QDialog):
         
         layout.addLayout(btn_layout)
         self.setLayout(layout)
+    
+    def copy_text(self):
+        clipboard = self.text_edit.toPlainText()
+        from PyQt5.QtWidgets import QApplication
+        QApplication.clipboard().setText(clipboard)
 
 
 class ScreenCaptureTool(QWidget):
@@ -50,7 +69,25 @@ class ScreenCaptureTool(QWidget):
         self.start_pos = QPoint()
         self.end_pos = QPoint()
         self.screenshot = None
+        self.ocr = None
         self.init_ui()
+        self.init_ocr()
+        
+    def init_ocr(self):
+        """初始化 PaddleOCR"""
+        try:
+            self.ocr = PaddleOCR(
+                use_doc_orientation_classify=False,
+                use_doc_unwarping=False,
+                use_textline_orientation=False,
+                lang='ch',  # 中文+英文
+            )
+            print("[OCR] PaddleOCR 初始化成功")
+        except Exception as e:
+            print(f"[OCR] PaddleOCR 初始化失败: {e}")
+            import traceback
+            traceback.print_exc()
+            self.ocr = None
         
     def init_ui(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
@@ -122,7 +159,7 @@ class ScreenCaptureTool(QWidget):
             self.text_captured.emit("")
     
     def capture_selected_area(self):
-        """截取选定区域并保存为图片"""
+        """截取选定区域并使用 OCR 识别文字"""
         rect = self.get_selection_rect()
         if rect.width() < 10 or rect.height() < 10:
             self.close()
@@ -133,15 +170,19 @@ class ScreenCaptureTool(QWidget):
             x, y, w, h = rect.x(), rect.y(), rect.width(), rect.height()
             cropped = self.screenshot.crop((x, y, x + w, y + h))
             
-            # 保存到剪贴板
-            cropped.save('temp_screenshot.png')
+            # 保存截图
+            image_path = 'temp_screenshot.png'
+            cropped.save(image_path)
             
-            # 显示截图预览
-            dialog = OCRResultDialog("截图已保存到 temp_screenshot.png", self)
+            # 使用 OCR 识别文字
+            recognized_text = self._perform_ocr(cropped)
+            
+            # 显示结果
+            dialog = OCRResultDialog(recognized_text, image_path, self)
             dialog.exec_()
             
             self.close()
-            self.text_captured.emit("")
+            self.text_captured.emit(recognized_text if recognized_text else "")
             
         except Exception as e:
             print(f"[截图] 错误: {e}")
@@ -149,3 +190,40 @@ class ScreenCaptureTool(QWidget):
             traceback.print_exc()
             self.close()
             self.text_captured.emit("")
+    
+    def _perform_ocr(self, image):
+        """使用 PaddleOCR 识别文字"""
+        if self.ocr is None:
+            return "[OCR 未初始化]"
+        
+        try:
+            import numpy as np
+            
+            # 将 PIL Image 转换为 numpy array
+            img_array = np.array(image)
+            
+            # PaddleOCR 识别
+            result = self.ocr.predict(img_array)
+            
+            print(f"[OCR] 识别结果: {result}")
+            
+            # 提取识别的文字
+            all_texts = []
+            for res in result:
+                # result 是字典格式
+                if isinstance(res, dict) and 'rec_texts' in res:
+                    all_texts.extend(res['rec_texts'])
+                # 如果是对象格式
+                elif hasattr(res, 'rec_texts') and res.rec_texts:
+                    all_texts.extend(res.rec_texts)
+            
+            if all_texts:
+                return '\n'.join(all_texts)
+            else:
+                return ""
+                
+        except Exception as e:
+            print(f"[OCR] 识别失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return f"[识别错误: {e}]"

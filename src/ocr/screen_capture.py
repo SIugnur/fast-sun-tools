@@ -184,17 +184,21 @@ class ScreenCaptureTool(QWidget):
             img_array = np.array(image)
             
             # PaddleOCR 识别
-            result = self.ocr.predict(img_array)
+            result = self.ocr.ocr(img_array)
             
             # 提取识别的文字
             all_texts = []
-            for res in result:
-                # result 是字典格式
-                if isinstance(res, dict) and 'rec_texts' in res:
-                    all_texts.extend(res['rec_texts'])
-                # 如果是对象格式
-                elif hasattr(res, 'rec_texts') and res.rec_texts:
-                    all_texts.extend(res.rec_texts)
+            if result and len(result) > 0:
+                # PaddleOCR返回字典格式，包含rec_texts字段
+                result_data = result[0]
+                if isinstance(result_data, dict) and 'rec_texts' in result_data:
+                    all_texts = result_data['rec_texts']
+                elif isinstance(result_data, list):
+                    # 旧版本格式
+                    for line in result_data:
+                        if line and len(line) >= 2:
+                            text = line[1][0] if isinstance(line[1], tuple) else line[1]
+                            all_texts.append(text)
             
             if all_texts:
                 return '\n'.join(all_texts)

@@ -7,6 +7,7 @@ from src.file_explorer.file_browser import FileBrowser
 from src.ocr.screen_capture import ScreenCaptureTool
 from src.image_to_pdf.image_to_pdf_window import ImageToPDFWindow
 from src.utils.shortcuts import setup_shortcuts
+from paddleocr import PaddleOCR
 
 
 class MainWindow(QMainWindow):
@@ -14,10 +15,24 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.is_topmost = False
         self.image_to_pdf_window = None
+        self.ocr = None
+        self.init_ocr()
         self.init_ui()
         self.setWindowTitle("FastSunTools - 办公助手")
         self.resize(1200, 800)
         setup_shortcuts(self)
+    
+    def init_ocr(self):
+        """预加载 OCR 模型"""
+        try:
+            self.ocr = PaddleOCR(
+                use_doc_orientation_classify=False,
+                use_doc_unwarping=False,
+                use_textline_orientation=False,
+                lang='ch',
+            )
+        except Exception:
+            self.ocr = None
         
     def init_ui(self):
         self.create_toolbar()
@@ -37,8 +52,8 @@ class MainWindow(QMainWindow):
         
         toolbar.addSeparator()
         
-        ocr_action = QAction("截图", self)
-        ocr_action.setToolTip("屏幕截图并保存 (Alt+O)")
+        ocr_action = QAction("OCR 识别", self)
+        ocr_action.setToolTip("屏幕截图并识别文字 (Alt+O)")
         ocr_action.triggered.connect(self.start_ocr)
         toolbar.addAction(ocr_action)
         
@@ -92,7 +107,7 @@ class MainWindow(QMainWindow):
         self.show()
         
     def start_ocr(self):
-        self.ocr_tool = ScreenCaptureTool()
+        self.ocr_tool = ScreenCaptureTool(self.ocr)
         self.ocr_tool.text_captured.connect(self.on_ocr_text)
         self.hide()
         self.ocr_tool.start_capture()

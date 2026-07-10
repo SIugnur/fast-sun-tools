@@ -7,8 +7,6 @@ from PyQt5.QtWidgets import (QWidget, QDialog, QVBoxLayout,
 from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal
 from PyQt5.QtGui import QPainter, QColor, QPen, QPixmap, QImage
 
-from paddleocr import PaddleOCR
-
 
 class OCRResultDialog(QDialog):
     """截图结果对话框"""
@@ -63,31 +61,14 @@ class OCRResultDialog(QDialog):
 class ScreenCaptureTool(QWidget):
     text_captured = pyqtSignal(str)
     
-    def __init__(self):
+    def __init__(self, ocr_engine=None):
         super().__init__()
         self.is_selecting = False
         self.start_pos = QPoint()
         self.end_pos = QPoint()
         self.screenshot = None
-        self.ocr = None
+        self.ocr = ocr_engine
         self.init_ui()
-        self.init_ocr()
-        
-    def init_ocr(self):
-        """初始化 PaddleOCR"""
-        try:
-            self.ocr = PaddleOCR(
-                use_doc_orientation_classify=False,
-                use_doc_unwarping=False,
-                use_textline_orientation=False,
-                lang='ch',  # 中文+英文
-            )
-            print("[OCR] PaddleOCR 初始化成功")
-        except Exception as e:
-            print(f"[OCR] PaddleOCR 初始化失败: {e}")
-            import traceback
-            traceback.print_exc()
-            self.ocr = None
         
     def init_ui(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
@@ -204,8 +185,6 @@ class ScreenCaptureTool(QWidget):
             
             # PaddleOCR 识别
             result = self.ocr.predict(img_array)
-            
-            print(f"[OCR] 识别结果: {result}")
             
             # 提取识别的文字
             all_texts = []

@@ -69,3 +69,4 @@ config.local.py
 # Temporary files
 *.tmp
 *.bak
+temp_screenshot.png

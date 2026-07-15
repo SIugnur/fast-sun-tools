@@ -1,13 +1,32 @@
 import os
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QToolBar, QAction, QSplitter, QStatusBar, QLabel)
-from PyQt5.QtCore import Qt, QSize, pyqtSignal
+from PyQt5.QtCore import Qt, QSize, pyqtSignal, QThread
 from PyQt5.QtGui import QIcon, QFont
 from src.file_explorer.file_browser import FileBrowser
 from src.ocr.screen_capture import ScreenCaptureTool
 from src.image_to_pdf.image_to_pdf_window import ImageToPDFWindow
 from src.utils.shortcuts import setup_shortcuts
-from paddleocr import PaddleOCR
+
+
+class OCRLoaderThread(QThread):
+    """后台线程用于加载 OCR 模型"""
+    ocr_loaded = pyqtSignal(object)  # 加载完成后发出信号，传递 OCR 实例
+    load_failed = pyqtSignal(str)    # 加载失败时发出信号，传递错误信息
+    
+    def run(self):
+        """在后台线程中加载 OCR 模型"""
+        try:
+            from paddleocr import PaddleOCR
+            ocr = PaddleOCR(
+                use_doc_orientation_classify=False,
+                use_doc_unwarping=False,
+                use_textline_orientation=False,
+                lang='ch',
+            )
+            self.ocr_loaded.emit(ocr)  # 发出加载成功的信号
+        except Exception as e:
+            self.load_failed.emit(str(e))  # 发出加载失败的信号
 
 
 class MainWindow(QMainWindow):
@@ -16,23 +35,63 @@ class MainWindow(QMainWindow):
         self.is_topmost = False
         self.image_to_pdf_window = None
         self.ocr = None
-        self.init_ocr()
+        self.ocr_loader = None
+        self.is_ocr_loading = False
         self.init_ui()
         self.setWindowTitle("FastSunTools - 办公助手")
         self.resize(1200, 800)
         setup_shortcuts(self)
     
-    def init_ocr(self):
-        """预加载 OCR 模型"""
-        try:
-            self.ocr = PaddleOCR(
-                use_doc_orientation_classify=False,
-                use_doc_unwarping=False,
-                use_textline_orientation=False,
-                lang='ch',
-            )
-        except Exception:
-            self.ocr = None
+    def _load_ocr_async(self):
+        """异步加载 OCR 模型，不阻塞界面"""
+        if self.ocr is not None:
+            # OCR 已经加载，直接启动
+            self._start_ocr_capture()
+            return
+        
+        if self.is_ocr_loading:
+            # 正在加载中，忽略重复点击
+            return
+        
+        # 标记正在加载
+        self.is_ocr_loading = True
+        self.ocr_action.setEnabled(False)
+        self.ocr_action.setText("加载中...")
+        self.status_bar.showMessage("正在后台加载 OCR 模型...")
+        
+        # 创建后台线程加载 OCR
+        self.ocr_loader = OCRLoaderThread()
+        self.ocr_loader.ocr_loaded.connect(self._on_ocr_loaded)
+        self.ocr_loader.load_failed.connect(self._on_ocr_load_failed)
+        self.ocr_loader.start()
+    
+    def _on_ocr_loaded(self, ocr):
+        """OCR 加载成功后的回调"""
+        self.ocr = ocr
+        self.is_ocr_loading = False
+        self.ocr_action.setText("OCR 识别")
+        self.ocr_action.setEnabled(True)
+        self.status_bar.showMessage("OCR 模型加载完成")
+        
+        # 启动截图
+        self._start_ocr_capture()
+    
+    def _on_ocr_load_failed(self, error_msg):
+        """OCR 加载失败后的回调"""
+        self.is_ocr_loading = False
+        self.ocr_action.setText("OCR 识别")
+        self.ocr_action.setEnabled(True)
+        self.status_bar.showMessage(f"OCR 加载失败: {error_msg}")
+    
+    def _start_ocr_capture(self):
+        """启动 OCR 截图功能"""
+        if self.ocr is None:
+            return
+        
+        self.ocr_tool = ScreenCaptureTool(self.ocr)
+        self.ocr_tool.text_captured.connect(self.on_ocr_text)
+        self.hide()
+        self.ocr_tool.start_capture()
         
     def init_ui(self):
         self.create_toolbar()
@@ -52,10 +111,10 @@ class MainWindow(QMainWindow):
         
         toolbar.addSeparator()
         
-        ocr_action = QAction("OCR 识别", self)
-        ocr_action.setToolTip("屏幕截图并识别文字 (Alt+O)")
-        ocr_action.triggered.connect(self.start_ocr)
-        toolbar.addAction(ocr_action)
+        self.ocr_action = QAction("OCR 识别", self)
+        self.ocr_action.setToolTip("屏幕截图并识别文字 (Alt+O)")
+        self.ocr_action.triggered.connect(self.start_ocr)
+        toolbar.addAction(self.ocr_action)
         
         toolbar.addSeparator()
         
@@ -107,10 +166,9 @@ class MainWindow(QMainWindow):
         self.show()
         
     def start_ocr(self):
-        self.ocr_tool = ScreenCaptureTool(self.ocr)
-        self.ocr_tool.text_captured.connect(self.on_ocr_text)
-        self.hide()
-        self.ocr_tool.start_capture()
+        """启动 OCR 识别功能"""
+        # 异步加载 OCR 模型，不阻塞界面
+        self._load_ocr_async()
         
     def on_ocr_text(self, text):
         self.show()

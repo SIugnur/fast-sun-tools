@@ -7,6 +7,7 @@ from src.file_explorer.file_browser import FileBrowser
 from src.ocr.screen_capture import ScreenCaptureTool
 from src.image_to_pdf.image_to_pdf_window import ImageToPDFWindow
 from src.pdf_to_word.pdf_to_word_window import PDFToWordWindow
+from src.word_to_pdf.word_to_pdf_window import WordToPDFWindow
 from src.utils.shortcuts import setup_shortcuts
 
 
@@ -36,6 +37,7 @@ class MainWindow(QMainWindow):
         self.is_topmost = False
         self.image_to_pdf_window = None
         self.pdf_to_word_window = None
+        self.word_to_pdf_window = None
         self.ocr = None
         self.ocr_loader = None
         self.is_ocr_loading = False
@@ -148,6 +150,18 @@ class MainWindow(QMainWindow):
         # 将 PDF 子菜单添加到主菜单
         office_menu.addMenu(pdf_action)
         
+        # Word 选项（带子菜单）
+        word_action = QMenu("Word", office_menu)
+        
+        # Word转PDF
+        word_to_pdf_action = QAction("Word转PDF", self)
+        word_to_pdf_action.setToolTip("将Word文档转换为PDF文件")
+        word_to_pdf_action.triggered.connect(self.open_word_to_pdf)
+        word_action.addAction(word_to_pdf_action)
+        
+        # 将 Word 子菜单添加到主菜单
+        office_menu.addMenu(word_action)
+        
         # 关联菜单
         self.office_menu_btn.setMenu(office_menu)
         
@@ -225,6 +239,16 @@ class MainWindow(QMainWindow):
         self.pdf_to_word_window.raise_()
         self.pdf_to_word_window.activateWindow()
         self.status_bar.showMessage("已打开PDF转Word工具")
+    
+    def open_word_to_pdf(self):
+        """打开Word转PDF工具窗口"""
+        if self.word_to_pdf_window is None:
+            self.word_to_pdf_window = WordToPDFWindow()
+        
+        self.word_to_pdf_window.show()
+        self.word_to_pdf_window.raise_()
+        self.word_to_pdf_window.activateWindow()
+        self.status_bar.showMessage("已打开Word转PDF工具")
             
     def go_home(self):
         home_dir = os.path.expanduser("~")

@@ -1,11 +1,12 @@
 import os
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QToolBar, QAction, QSplitter, QStatusBar, QLabel)
+                             QToolBar, QToolButton, QAction, QMenu, QSplitter, QStatusBar, QLabel)
 from PyQt5.QtCore import Qt, QSize, pyqtSignal, QThread
 from PyQt5.QtGui import QIcon, QFont
 from src.file_explorer.file_browser import FileBrowser
 from src.ocr.screen_capture import ScreenCaptureTool
 from src.image_to_pdf.image_to_pdf_window import ImageToPDFWindow
+from src.pdf_to_word.pdf_to_word_window import PDFToWordWindow
 from src.utils.shortcuts import setup_shortcuts
 
 
@@ -34,6 +35,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.is_topmost = False
         self.image_to_pdf_window = None
+        self.pdf_to_word_window = None
         self.ocr = None
         self.ocr_loader = None
         self.is_ocr_loading = False
@@ -118,11 +120,38 @@ class MainWindow(QMainWindow):
         
         toolbar.addSeparator()
         
-        # 图片转PDF功能
+        # Office 下拉菜单
+        self.office_menu_btn = QToolButton()
+        self.office_menu_btn.setText("Office")
+        self.office_menu_btn.setToolTip("办公工具")
+        self.office_menu_btn.setPopupMode(QToolButton.InstantPopup)
+        self.office_menu_btn.setStyleSheet("QToolButton::menu-indicator { image: none; }")  # 隐藏下拉箭头
+        
+        # 创建主菜单
+        office_menu = QMenu(self)
+        
+        # PDF 选项（带子菜单）
+        pdf_action = QMenu("PDF", office_menu)
+        
+        # 图片转PDF
         image_to_pdf_action = QAction("图片转PDF", self)
         image_to_pdf_action.setToolTip("将多张图片拼接成一个PDF文件")
         image_to_pdf_action.triggered.connect(self.open_image_to_pdf)
-        toolbar.addAction(image_to_pdf_action)
+        pdf_action.addAction(image_to_pdf_action)
+        
+        # PDF转Word
+        pdf_to_word_action = QAction("PDF转Word", self)
+        pdf_to_word_action.setToolTip("将PDF文件转换为Word文档")
+        pdf_to_word_action.triggered.connect(self.open_pdf_to_word)
+        pdf_action.addAction(pdf_to_word_action)
+        
+        # 将 PDF 子菜单添加到主菜单
+        office_menu.addMenu(pdf_action)
+        
+        # 关联菜单
+        self.office_menu_btn.setMenu(office_menu)
+        
+        toolbar.addWidget(self.office_menu_btn)
         
         toolbar.addSeparator()
         
@@ -186,6 +215,16 @@ class MainWindow(QMainWindow):
         self.image_to_pdf_window.raise_()
         self.image_to_pdf_window.activateWindow()
         self.status_bar.showMessage("已打开图片转PDF工具")
+    
+    def open_pdf_to_word(self):
+        """打开PDF转Word工具窗口"""
+        if self.pdf_to_word_window is None:
+            self.pdf_to_word_window = PDFToWordWindow()
+        
+        self.pdf_to_word_window.show()
+        self.pdf_to_word_window.raise_()
+        self.pdf_to_word_window.activateWindow()
+        self.status_bar.showMessage("已打开PDF转Word工具")
             
     def go_home(self):
         home_dir = os.path.expanduser("~")

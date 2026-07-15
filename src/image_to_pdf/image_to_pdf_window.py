@@ -3,8 +3,8 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                              QListWidget, QListWidgetItem, QLabel, QFileDialog, QMessageBox,
                              QGroupBox, QCheckBox, QSpinBox, QComboBox, QProgressBar,
                              QInputDialog, QAbstractItemView)
-from PyQt5.QtCore import Qt, QSize, QMimeData
-from PyQt5.QtGui import QPixmap, QIcon, QImage, QTransform, QDrag
+from PyQt5.QtCore import Qt, QSize
+from PyQt5.QtGui import QPixmap, QIcon
 from PIL import Image
 
 
@@ -57,19 +57,34 @@ class ImageToPDFWindow(QWidget):
         layout.addLayout(button_layout)
         
         # 图片列表区域
-        list_group = QGroupBox("待转换图片列表（拖拽调整顺序）")
+        list_group = QGroupBox("待转换图片列表")
         list_layout = QVBoxLayout()
         
+        # 移动按钮区域
+        move_btn_layout = QHBoxLayout()
+        move_btn_layout.addStretch()
+        
+        self.move_up_btn = QPushButton("上移")
+        self.move_up_btn.clicked.connect(self.move_up)
+        self.move_up_btn.setMinimumWidth(80)
+        self.move_up_btn.setStyleSheet("padding: 5px 15px;")
+        move_btn_layout.addWidget(self.move_up_btn)
+        
+        self.move_down_btn = QPushButton("下移")
+        self.move_down_btn.clicked.connect(self.move_down)
+        self.move_down_btn.setMinimumWidth(80)
+        self.move_down_btn.setStyleSheet("padding: 5px 15px;")
+        move_btn_layout.addWidget(self.move_down_btn)
+        
+        move_btn_layout.addStretch()
+        list_layout.addLayout(move_btn_layout)
+        
+        # 图片列表
         self.image_list = QListWidget()
         self.image_list.setSelectionMode(QListWidget.ExtendedSelection)  # 支持Ctrl/Shift多选
         self.image_list.setViewMode(QListWidget.IconMode)
         self.image_list.setIconSize(QSize(100, 100))
         self.image_list.setSpacing(10)
-        self.image_list.setAcceptDrops(True)
-        self.image_list.setDragEnabled(True)
-        self.image_list.setDropIndicatorShown(True)
-        self.image_list.setDragDropMode(QListWidget.InternalMove)
-        self.image_list.setDefaultDropAction(Qt.MoveAction)
         
         list_layout.addWidget(self.image_list)
         
@@ -226,6 +241,50 @@ class ImageToPDFWindow(QWidget):
             if not filename.endswith('.pdf'):
                 filename += '.pdf'
             self.filename_edit.setText(filename)
+    
+    def move_up(self):
+        """将选中项上移"""
+        selected_items = self.image_list.selectedItems()
+        
+        if not selected_items:
+            return
+        
+        # 获取所有选中项的行号并排序
+        rows = sorted([self.image_list.row(item) for item in selected_items])
+        
+        # 从上往下移动（先处理最小的行号）
+        for row in rows:
+            if row > 0:  # 不是第一行
+                # 交换数据和列表项
+                self.image_files[row], self.image_files[row - 1] = \
+                    self.image_files[row - 1], self.image_files[row]
+                
+                # 交换列表项
+                item = self.image_list.takeItem(row)
+                self.image_list.insertItem(row - 1, item)
+                item.setSelected(True)
+    
+    def move_down(self):
+        """将选中项下移"""
+        selected_items = self.image_list.selectedItems()
+        
+        if not selected_items:
+            return
+        
+        # 获取所有选中项的行号并反向排序
+        rows = sorted([self.image_list.row(item) for item in selected_items], reverse=True)
+        
+        # 从下往上移动（先处理最大的行号）
+        for row in rows:
+            if row < self.image_list.count() - 1:  # 不是最后一行
+                # 交换数据和列表项
+                self.image_files[row], self.image_files[row + 1] = \
+                    self.image_files[row + 1], self.image_files[row]
+                
+                # 交换列表项
+                item = self.image_list.takeItem(row)
+                self.image_list.insertItem(row + 1, item)
+                item.setSelected(True)
     
     def update_status(self):
         """更新状态信息"""
